@@ -82,7 +82,7 @@ class AICodeSandbox:
             # Check for NVIDIA GPU
             result = sandbox.exec(
                 "nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo 'no_gpu'",
-                timeout=600
+                timeout=300
             )
             if "no_gpu" not in result.stdout and result.stdout.strip():
                 logger.info(f"GPU detected: {result.stdout.strip()}")
@@ -110,7 +110,7 @@ class AICodeSandbox:
                 "image": "ubuntu:latest",
                 "name": "ai-code-generation-gpu",
                 "wait_ready": True,
-                "timeout": 600,
+                "timeout": 300,
                 "api_token": self.api_token,
                 "instance_type": "small",
             }
@@ -166,6 +166,7 @@ class AICodeSandbox:
             logger.info("Downloading and installing Ollama...")
             result = sandbox.exec(
                 "curl -fsSL https://ollama.com/install.sh | sh",
+                timeout=300,
                 on_stdout=lambda data: logger.info(data.strip()),
                 on_stderr=lambda data: logger.error(data.strip())
             )
@@ -175,13 +176,13 @@ class AICodeSandbox:
             
             # Start Ollama service in background
             logger.info("Starting Ollama service...")
-            sandbox.launch_process("ollama serve")
+            sandbox.launch_process("ollama serve", timeout=300)
             
             # Wait for Ollama to start
-            max_retries = 10
+            max_retries = 30
             for i in range(max_retries):
                 time.sleep(1)
-                result = sandbox.exec("ollama list")
+                result = sandbox.exec("ollama list", timeout=300)
                 if result.exit_code == 0:
                     logger.info("Ollama started successfully")
                     return True
@@ -215,7 +216,7 @@ class AICodeSandbox:
             # Pull the model
             logger.info(f"Pulling model {model} in sandbox...")
             result = sandbox.exec(f"ollama pull {model}", 
-                timeout=600, 
+                timeout=300, 
                 on_stdout=lambda data: logger.info(data.strip()), 
                 on_stderr=lambda data: logger.error(data.strip())
             )
@@ -259,7 +260,7 @@ class AICodeSandbox:
             filename = f"/tmp/{model}-{output}"
             logger.info(f"Executing code_generation.py with model {model}, prompt {prompt}, and output {filename}")
             result = sandbox.exec(f"python3 /tmp/code_generation.py {model} \"{prompt}\" \"{filename}\"", 
-                timeout=600,
+                timeout=300,
                 on_stdout=lambda data: logger.info(data.strip()), 
                 on_stderr=lambda data: logger.error(data.strip())
             )
@@ -293,16 +294,15 @@ class AICodeSandbox:
 
             # Print the code to execute
             fs = sandbox.filesystem
-            code = fs.read_file(filename)
+            file_info = fs.read_file(filename)
             logger.info(f"Code to execute:\n")
+            logger.info(file_info.content)
             logger.info("-" * 60)
-            for line in code:
-                logger.info(line.strip())
-            logger.info("-" * 60)
+            
             # Execute the code
             logger.info(f"Executing code in sandbox, file: {filename}...")
             result = sandbox.exec(f"python3 {filename}", 
-                timeout=600,
+                timeout=300,
                 on_stdout=lambda data: logger.info(data.strip()), 
                 on_stderr=lambda data: logger.error(data.strip())
             )
