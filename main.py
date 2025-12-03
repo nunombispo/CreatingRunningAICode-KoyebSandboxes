@@ -154,7 +154,8 @@ class AICodeSandbox:
             # Install required packages
             logger.info("Installing system packages...")
             result = sandbox.exec(
-                "apt-get update -qq && apt-get install -y -qq curl procps lshw python3 python3-pip python3-requests",
+                "(apt-get update -qq && apt-get install -y -qq curl procps lshw python3 python3-pip python3-requests) 2>&1",
+                timeout=300,
                 on_stdout=lambda data: logger.info(data.strip()),
                 on_stderr=lambda data: logger.error(data.strip())
             )
@@ -165,7 +166,7 @@ class AICodeSandbox:
             # Download and install Ollama
             logger.info("Downloading and installing Ollama...")
             result = sandbox.exec(
-                "curl -fsSL https://ollama.com/install.sh | sh",
+                "(curl -fsSL https://ollama.com/install.sh | sh) 2>&1",
                 timeout=300,
                 on_stdout=lambda data: logger.info(data.strip()),
                 on_stderr=lambda data: logger.error(data.strip())
@@ -176,13 +177,13 @@ class AICodeSandbox:
             
             # Start Ollama service in background
             logger.info("Starting Ollama service...")
-            sandbox.launch_process("ollama serve", timeout=300)
+            sandbox.launch_process("ollama serve")
             
             # Wait for Ollama to start
             max_retries = 30
             for i in range(max_retries):
                 time.sleep(1)
-                result = sandbox.exec("ollama list", timeout=300)
+                result = sandbox.exec("ollama list 2>&1", timeout=300)
                 if result.exit_code == 0:
                     logger.info("Ollama started successfully")
                     return True
@@ -215,7 +216,7 @@ class AICodeSandbox:
             
             # Pull the model
             logger.info(f"Pulling model {model} in sandbox...")
-            result = sandbox.exec(f"ollama pull {model}", 
+            result = sandbox.exec(f"ollama pull {model} 2>&1", 
                 timeout=300, 
                 on_stdout=lambda data: logger.info(data.strip()), 
                 on_stderr=lambda data: logger.error(data.strip())
@@ -259,7 +260,7 @@ class AICodeSandbox:
             # Execute code_generation.py
             filename = f"/tmp/{model}-{output}"
             logger.info(f"Executing code_generation.py with model {model}, prompt {prompt}, and output {filename}")
-            result = sandbox.exec(f"python3 /tmp/code_generation.py {model} \"{prompt}\" \"{filename}\"", 
+            result = sandbox.exec(f"python3 /tmp/code_generation.py {model} \"{prompt}\" \"{filename}\" 2>&1", 
                 timeout=300,
                 on_stdout=lambda data: logger.info(data.strip()), 
                 on_stderr=lambda data: logger.error(data.strip())
@@ -301,13 +302,17 @@ class AICodeSandbox:
             
             # Execute the code
             logger.info(f"Executing code in sandbox, file: {filename}...")
-            result = sandbox.exec(f"python3 {filename}", 
+            result = sandbox.exec(f"python3 {filename} 2>&1", 
                 timeout=300,
                 on_stdout=lambda data: logger.info(data.strip()), 
                 on_stderr=lambda data: logger.error(data.strip())
             )
             if result.exit_code == 0:
                 logger.info(f"Code executed successfully")
+                logger.info("-" * 60)
+                logger.info("Result:")
+                logger.info(result.stdout.strip())
+                logger.info("-" * 60)
                 return True
             else:
                 logger.error(f"Failed to execute code: {result.stderr}")
@@ -345,27 +350,126 @@ class AICodeSandbox:
 
 # Pipeline to generate code and execute it
 def pipeline():
+    """
+    Main pipeline to generate and execute code using AI models in Koyeb sandboxes.
+
+    """
+    # Set values for the pipeline
+    models = ["llama3.2", "codellama", "deepseek-coder"]
+    prompt = "Write a Python program to calculate factorial of n=5. It should use a function."
+    output_filename = "output.py"
+    gpu_instance_type = "gpu-nvidia-rtx-4000-sff-ada"
+    region = "fra"
+    use_gpu = True
+    require_gpu = True
+
+    # Log the pipeline start
     logger.info("\n")
     logger.info("=" * 60)
     logger.info("Starting AI Code Generation and Execution with Koyeb Sandboxes")
     logger.info("=" * 60)
-    sandbox_manager = AICodeSandbox(api_token, use_gpu=True)
-    gpu_instance_type = "gpu-nvidia-rtx-4000-sff-ada"
-    region = "fra"
-    sandbox, has_gpu = sandbox_manager._create_sandbox(gpu_instance_type, region)
-    if sandbox and has_gpu:
-        if sandbox_manager._install_ollama_in_sandbox(sandbox):
-            models = ["llama3.2", "codellama", "deepseek-coder"]
-            for model in models:
-                if sandbox_manager._pull_model_in_sandbox(sandbox, model):
-                    prompt = "Write a Python program to calculate factorial of n=5"
-                    output = "output.py"
-                    success, filename = sandbox_manager._generate_code_in_sandbox(sandbox, model, prompt, output)
-                    if success:
-                        sandbox_manager._execute_code_in_sandbox(sandbox, filename)
-            # Delete the sandbox
-            sandbox_manager._delete_sandbox(sandbox)
-                          
+    logger.info(f"Models: {', '.join(models)}")
+    logger.info(f"Prompt: {prompt}")
+    logger.info(f"Output filename: {output_filename}")
+    logger.info(f"GPU instance type: {gpu_instance_type}")
+    logger.info(f"Region: {region}")
+    logger.info(f"Use GPU: {use_gpu}, Require GPU: {require_gpu}")
+    
+    # Initialize the sandbox and sandbox manager
+    sandbox = None
+    sandbox_manager = None
+
+    # Initialize the statistics
+    stats = {
+        "models_pulled": 0,
+        "code_generated": 0,
+        "code_executed": 0,
+        "errors": 0
+    }
+    
+    try:
+        # Create the sandbox manager
+        sandbox_manager = AICodeSandbox(api_token, use_gpu=use_gpu)
+        
+        # Create the sandbox
+        sandbox, has_gpu = sandbox_manager._create_sandbox(gpu_instance_type, region)
+        if not sandbox:
+            logger.error("Failed to create sandbox")
+            return False
+        
+        # Check GPU requirement
+        if require_gpu and not has_gpu:
+            logger.error("GPU is required but not available in sandbox")
+            return False
+        elif use_gpu and not has_gpu:
+            logger.warning("GPU was requested but not available. Continuing with CPU...")
+        
+        # Install Ollama
+        if not sandbox_manager._install_ollama_in_sandbox(sandbox):
+            logger.error("Failed to install Ollama in sandbox")
+            return False
+        
+        # Process each model
+        for model in models:
+            logger.info("\n")
+            logger.info("=" * 60)
+            logger.info(f"Processing model: {model}")
+            logger.info("=" * 60)
+            
+            # Pull model
+            if not sandbox_manager._pull_model_in_sandbox(sandbox, model):
+                logger.error(f"Failed to pull model {model}, skipping...")
+                stats["errors"] += 1
+            else:
+                stats["models_pulled"] += 1
+            
+            # Generate code
+            success, filename = sandbox_manager._generate_code_in_sandbox(
+                sandbox, model, prompt, output_filename
+            )
+            if not success or not filename:
+                logger.error(f"Failed to generate code with model {model}, skipping...")
+                stats["errors"] += 1
+            else:
+                stats["code_generated"] += 1
+            
+            # Execute code
+            if sandbox_manager._execute_code_in_sandbox(sandbox, filename):
+                stats["code_executed"] += 1
+            else:
+                logger.error(f"Code execution failed for model {model}")
+                stats["errors"] += 1
+        
+        # Print summary
+        logger.info("\n")
+        logger.info("=" * 60)
+        logger.info("Pipeline Summary")
+        logger.info("=" * 60)
+        logger.info(f"Models pulled: {stats['models_pulled']}/{len(models)}")
+        logger.info(f"Code generated: {stats['code_generated']}/{len(models)}")
+        logger.info(f"Code executed: {stats['code_executed']}/{len(models)}")
+        logger.info(f"Errors: {stats['errors']}")
+        
+        # Check if the pipeline completed successfully
+        success = stats["code_executed"] > 0
+        if success:
+            logger.info("Pipeline completed successfully!")
+        else:
+            logger.error("Pipeline completed with errors or no successful executions")
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in pipeline: {str(e)}", exc_info=True)
+        return False
+        
+    finally:
+        # Always cleanup sandbox
+        if sandbox:
+            try:
+                sandbox_manager._delete_sandbox(sandbox)
+            except Exception as e:
+                logger.error(f"Error during sandbox cleanup: {str(e)}")
+
 
 if __name__ == "__main__":
+    # Run the pipeline
     pipeline()
