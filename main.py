@@ -12,6 +12,7 @@ import sys
 import json
 import time
 import logging
+import argparse
 from datetime import datetime
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
@@ -349,19 +350,41 @@ class AICodeSandbox:
             return False
 
 # Pipeline to generate code and execute it
-def pipeline():
+def pipeline(
+    models: Optional[List[str]] = None,
+    prompt: Optional[str] = None,
+    output_filename: Optional[str] = None,
+    gpu_instance_type: Optional[str] = None,
+    region: Optional[str] = None,
+    use_gpu: bool = True,
+    require_gpu: bool = True
+):
     """
     Main pipeline to generate and execute code using AI models in Koyeb sandboxes.
-
+    
+    Args:
+        models: List of AI models to use (default: ["llama3.2", "codellama", "deepseek-coder"])
+        prompt: Code generation prompt (default: "Write a Python program to calculate factorial of n=5. It should use a function.")
+        output_filename: Base output filename (default: "output.py")
+        gpu_instance_type: GPU instance type (default: "gpu-nvidia-rtx-4000-sff-ada")
+        region: Koyeb region (default: "fra")
+        use_gpu: Whether to request GPU-enabled sandbox (default: True)
+        require_gpu: Whether to fail if GPU is not available (default: True)
+    
+    Returns:
+        True if pipeline completed successfully, False otherwise
     """
-    # Set values for the pipeline
-    models = ["llama3.2", "codellama", "deepseek-coder"]
-    prompt = "Write a Python program to calculate factorial of n=5. It should use a function."
-    output_filename = "output.py"
-    gpu_instance_type = "gpu-nvidia-rtx-4000-sff-ada"
-    region = "fra"
-    use_gpu = True
-    require_gpu = True
+    # Set default values
+    if models is None:
+        models = ["llama3.2", "codellama", "deepseek-coder"]
+    if prompt is None:
+        prompt = "Write a Python program to calculate factorial of n=5. It should use a function."
+    if output_filename is None:
+        output_filename = "output.py"
+    if gpu_instance_type is None:
+        gpu_instance_type = "gpu-nvidia-rtx-4000-sff-ada"
+    if region is None:
+        region = "fra"
 
     # Log the pipeline start
     logger.info("\n")
@@ -457,6 +480,8 @@ def pipeline():
         else:
             logger.error("Pipeline completed with errors or no successful executions")
         
+        return success
+        
     except Exception as e:
         logger.error(f"Unexpected error in pipeline: {str(e)}", exc_info=True)
         return False
@@ -471,5 +496,85 @@ def pipeline():
 
 
 if __name__ == "__main__":
-    # Run the pipeline
-    pipeline()
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Generate and execute AI code using Ollama models in Koyeb sandboxes",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+            Examples:
+            %(prog)s
+            %(prog)s --prompt "Write a Python function to calculate prime numbers"
+            %(prog)s --models llama3.2 codellama --prompt "Create a REST API"
+            %(prog)s --instance-type gpu-nvidia-rtx-4000-sff-ada --region fra
+            %(prog)s --no-require-gpu  # Allow CPU fallback
+            %(prog)s --no-gpu  # Use CPU-only sandbox
+        """
+    )
+    
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        default=["llama3.2", "codellama", "deepseek-coder"],
+        help="AI models to use (default: llama3.2 codellama deepseek-coder)"
+    )
+    
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        default="Write a Python program to calculate factorial of n=5. It should use a function.",
+        help="Code generation prompt"
+    )
+    
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="output.py",
+        dest="output_filename",
+        help="Output filename for generated code (default: output.py)"
+    )
+    
+    parser.add_argument(
+        "--instance-type",
+        type=str,
+        default="gpu-nvidia-rtx-4000-sff-ada",
+        dest="gpu_instance_type",
+        help="GPU instance type (default: gpu-nvidia-rtx-4000-sff-ada)"
+    )
+    
+    parser.add_argument(
+        "--region",
+        type=str,
+        default="fra",
+        help="Koyeb region (default: fra)"
+    )
+    
+    parser.add_argument(
+        "--no-gpu",
+        action="store_true",
+        help="Use CPU-only sandbox (disable GPU)"
+    )
+    
+    parser.add_argument(
+        "--no-require-gpu",
+        action="store_true",
+        help="Allow CPU fallback if GPU is not available"
+    )
+    
+    args = parser.parse_args()
+    
+    # Determine GPU settings
+    use_gpu = not args.no_gpu
+    require_gpu = not args.no_require_gpu
+    
+    # Run the pipeline with parsed arguments
+    success = pipeline(
+        models=args.models,
+        prompt=args.prompt,
+        output_filename=args.output_filename,
+        gpu_instance_type=args.gpu_instance_type,
+        region=args.region,
+        use_gpu=use_gpu,
+        require_gpu=require_gpu
+    )
+    
+    sys.exit(0 if success else 1)

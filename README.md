@@ -1,6 +1,6 @@
 # Creating and Running AI-Generated Code Securely with Koyeb Sandboxes
 
-This project demonstrates how to use **Ollama** to generate code with multiple AI models **inside GPU-enabled Koyeb Sandboxes** and execute that code securely in isolated environments. 
+This project demonstrates how to use **Ollama** to generate code with multiple AI models **inside GPU-enabled Koyeb Sandboxes** and execute that code securely in isolated environments.
 
 All code generation happens inside the sandbox for maximum security and isolation.
 
@@ -10,6 +10,7 @@ All code generation happens inside the sandbox for maximum security and isolatio
 - 🚀 **GPU Acceleration**: Code generation runs in GPU-enabled Koyeb sandboxes for optimal performance
 - 🔒 **Fully Isolated**: Both code generation and execution happen in isolated sandbox environments
 - 🧹 **Automatic Cleanup**: Sandboxes are automatically deleted after execution
+- ⚙️ **Command-Line Interface**: Customize all settings via command-line arguments without editing code
 
 ## Prerequisites
 
@@ -95,21 +96,93 @@ The default configuration:
 - **Prompt**: "Write a Python program to calculate factorial of n=5. It should use a function."
 - **Output**: output.py
 - **GPU**: Enabled (requires GPU)
+- **Instance Type**: gpu-nvidia-rtx-4000-sff-ada
+- **Region**: fra
 
-### Customizing the Pipeline
+### Command-Line Options
 
-Edit the `pipeline()` function in `main.py` to customize:
+Customize the pipeline using command-line arguments:
 
-```python
-def pipeline():
-    # Customize these values
-    models = ["llama3.2", "codellama", "deepseek-coder"]
-    prompt = "Write a Python program to calculate factorial of n=5. It should use a function."
-    output_filename = "output.py"
-    gpu_instance_type = "gpu-nvidia-rtx-4000-sff-ada"
-    region = "fra"
-    use_gpu = True
-    require_gpu = True  # Set to False to allow CPU fallback
+```bash
+# View all available options
+python main.py --help
+```
+
+#### Available Arguments
+
+- `--models MODEL [MODEL ...]`: Specify AI models to use
+
+  ```bash
+  python main.py --models llama3.2 codellama
+  python main.py --models deepseek-coder mistral
+  ```
+
+- `--prompt PROMPT`: Custom code generation prompt
+
+  ```bash
+  python main.py --prompt "Write a Python function to calculate prime numbers up to 100"
+  ```
+
+- `--output FILENAME`: Output filename for generated code
+
+  ```bash
+  python main.py --output my_code.py
+  ```
+
+- `--instance-type TYPE`: GPU instance type
+
+  ```bash
+  python main.py --instance-type gpu-nvidia-rtx-4000-sff-ada
+  python main.py --instance-type gpu-nvidia-a100
+  ```
+
+- `--region REGION`: Koyeb region
+
+  ```bash
+  python main.py --region fra
+  python main.py --region nyc
+  python main.py --region sfo
+  ```
+
+- `--no-gpu`: Use CPU-only sandbox (disable GPU)
+
+  ```bash
+  python main.py --no-gpu
+  ```
+
+- `--no-require-gpu`: Allow CPU fallback if GPU is not available
+  ```bash
+  python main.py --no-require-gpu
+  ```
+
+### Usage Examples
+
+```bash
+# Default run
+python main.py
+
+# Custom prompt
+python main.py --prompt "Create a REST API endpoint for user authentication"
+
+# Multiple models with custom prompt
+python main.py --models llama3.2 codellama --prompt "Write a sorting algorithm"
+
+# Custom instance type and region
+python main.py --instance-type gpu-nvidia-rtx-4000-sff-ada --region fra
+
+# Allow CPU fallback if GPU unavailable
+python main.py --no-require-gpu
+
+# Use CPU-only sandbox
+python main.py --no-gpu --prompt "Simple Python script"
+
+# Combine multiple options
+python main.py \
+  --models llama3.2 deepseek-coder \
+  --prompt "Write a Python class for managing a todo list" \
+  --output todo_manager.py \
+  --region nyc \
+  --no-require-gpu
 ```
 
 ## How It Works
@@ -206,19 +279,30 @@ The application supports GPU-enabled sandboxes for faster code generation. GPU a
 
 ### GPU Configuration
 
-In the `pipeline()` function:
+Configure GPU settings via command-line arguments:
 
-```python
-use_gpu = True        # Request GPU-enabled sandbox
-require_gpu = True    # Fail if GPU not available
-require_gpu = False   # Continue with CPU if GPU unavailable
+```bash
+# Request GPU and fail if unavailable (default)
+python main.py
+
+# Request GPU but allow CPU fallback
+python main.py --no-require-gpu
+
+# Use CPU-only sandbox
+python main.py --no-gpu
 ```
 
 **Behavior:**
 
-- `use_gpu=True, require_gpu=True`: Request GPU and fail if unavailable
-- `use_gpu=True, require_gpu=False`: Request GPU but continue with CPU if unavailable
-- `use_gpu=False`: Use CPU-only sandbox
+- **Default** (`--no-gpu` not set, `--no-require-gpu` not set): Request GPU and fail if unavailable
+- **`--no-require-gpu`**: Request GPU but continue with CPU if unavailable
+- **`--no-gpu`**: Use CPU-only sandbox
+
+You can also customize the GPU instance type:
+
+```bash
+python main.py --instance-type gpu-nvidia-rtx-4000-sff-ada --region fra
+```
 
 ### Model Download Timeout
 
