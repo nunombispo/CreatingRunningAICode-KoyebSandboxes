@@ -1,3 +1,3 @@
-koyeb-sdk
-python-dotenv
+koyeb-sdk>=1.2.0
+python-dotenv>=1.2.1
 
